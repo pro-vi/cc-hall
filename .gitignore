@@ -1,0 +1,9 @@
+node_modules/
+.tmp/
+logs/
+*.log
+.DS_Store
+.claude/
+.prov/
+CLAUDE.local.md
+.journal/

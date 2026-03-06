@@ -1,0 +1,431 @@
+#!/usr/bin/env bash
+
+# cc-hall: Extensible Ctrl-G menu for Claude Code
+# Single fzf with Tab/Shift-Tab module navigation.
+
+# Resolve symlinks to find actual script location
+SCRIPT_PATH="${BASH_SOURCE[0]}"
+if [ -L "$SCRIPT_PATH" ]; then
+    if command -v readlink &>/dev/null; then
+        SCRIPT_PATH="$(readlink -f "$SCRIPT_PATH" 2>/dev/null || readlink "$SCRIPT_PATH")"
+    fi
+fi
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+
+export HALL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+export HALL_LIB_DIR="$HALL_DIR/lib"
+
+# ═══════════════════════════════════════════════════════════════════
+# Subcommand dispatch — cc-hall reload|preview|agent|module
+# ═══════════════════════════════════════════════════════════════════
+case "${1:-}" in
+    reload)  shift; exec "$HALL_LIB_DIR/hall-cmd-reload.sh" "$@" ;;
+    preview) shift; exec "$HALL_LIB_DIR/hall-cmd-preview.sh" "$@" ;;
+    agent)   shift; exec "$HALL_LIB_DIR/hall-cmd-agent.sh" "$@" ;;
+    module)  shift; exec "$HALL_LIB_DIR/hall-cmd-module.sh" "$@" ;;
+    skill)   shift; exec "$HALL_LIB_DIR/hall-cmd-skill.sh" "$@" ;;
+esac
+
+# ═══════════════════════════════════════════════════════════════════
+# EDITOR mode — everything below handles the fzf menu
+# ═══════════════════════════════════════════════════════════════════
+
+source "$HALL_LIB_DIR/hall-common.sh"
+source "$HALL_LIB_DIR/hall-menu.sh"
+source "$HALL_LIB_DIR/hall-theme.sh"
+
+# Pre-populate caches and export for child processes (tab-action, preview, reload)
+hall_available_editors >/dev/null
+source "$HALL_LIB_DIR/hall-render.sh"
+export _HALL_HAS_GLOW _HALL_CACHED_EDITORS _HALL_HAS_BUN HALL_GLOW_STYLE HALL_GLOW_PREVIEW_STYLE HALL_THEME_NAME
+
+hall_log_info "cc-hall started"
+hall_log_debug "Args: $*"
+
+# Store the prompt file path from EDITOR hook
+FILE="${1:-}"
+if [ -z "$FILE" ]; then
+    echo "Usage: cc-hall <file>" >&2
+    echo "cc-hall is designed to be used as Claude Code's EDITOR." >&2
+    echo "" >&2
+    echo "Subcommands:" >&2
+    echo "  cc-hall reload           Rebuild current module entries" >&2
+    echo "  cc-hall preview <line>   Preview dispatcher for fzf" >&2
+    echo "  cc-hall agent [opts]     Spawn/run claude agent" >&2
+    echo "  cc-hall module <cmd>     Module management (link/unlink/list)" >&2
+    echo "  cc-hall skill <cmd>      Install/remove MODULE_API skill" >&2
+    exit 1
+fi
+
+export HALL_FILE="$FILE"
+export HALL_SAFE_FILE=$(printf '%q' "$FILE")
+
+hall_log_debug "Prompt file: $FILE"
+
+# Save original TMUX for module compatibility
+export ORIGINAL_TMUX="${TMUX:-}"
+
+# tmux detection: use --tmux popup if inside tmux, else inline
+FZF_TMUX_FLAG=()
+if [ -n "${TMUX:-}" ]; then
+    FZF_TMUX_FLAG=(--tmux "center,85%,80%")
+fi
+
+# Terminal check
+if ! { [ -t 0 ] && [ -t 1 ] && [ -t 2 ]; } && [ -z "${TMUX:-}" ]; then
+    hall_log_error "cc-hall requires a proper terminal (stdin, stdout, stderr)"
+    echo "ERROR: cc-hall must be run from a terminal." >&2
+    exit 1
+fi
+
+hall_log_info "Terminal validation passed"
+
+# ═══════════════════════════════════════════════════════════════════
+# State initialization
+# ═══════════════════════════════════════════════════════════════════
+
+source "$HALL_LIB_DIR/hall-config.sh"
+
+# State directory for tab navigation (shared with helper scripts via env)
+HALL_STATE_DIR=$(mktemp -d /tmp/hall-state.XXXXXX)
+export HALL_STATE_DIR
+trap "rm -rf '$HALL_STATE_DIR'" EXIT INT TERM
+echo 0 > "$HALL_STATE_DIR/current"
+echo 0 > "$HALL_STATE_DIR/module-subtab"
+
+# Generate themed glow style now that HALL_STATE_DIR exists
+hall_apply_glow_style
+hall_clear_entry_cache
+
+# ═══════════════════════════════════════════════════════════════════
+# Build entries for current module (tagged with module name)
+# ═══════════════════════════════════════════════════════════════════
+
+hall_build_current_entries() {
+    local idx
+    idx=$(<"$HALL_STATE_DIR/current")
+    local mod_name="${HALL_MOD_NAMES[$idx]}"
+
+    local entries
+    entries=$(hall_build_module_entries "$mod_name")
+
+    if [ -n "$entries" ]; then
+        echo "$entries" | hall_tag_entries "$mod_name"
+    fi
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# Execute a command from a menu selection
+# Returns: HALL_RC_CLOSE (0), HALL_RC_NOT_HANDLED (1), HALL_RC_RELOAD (2)
+# ═══════════════════════════════════════════════════════════════════
+
+hall_execute() {
+    local module="$1"
+    local cmd="$2"
+
+    # Skip separators
+    if [ "$cmd" = 'echo' ]; then
+        return $HALL_RC_RELOAD
+    fi
+
+    # Route to module's on_select.sh
+    if [ -n "$module" ]; then
+        local module_dir
+        module_dir=$(hall_find_module_dir "$module")
+
+        if [ -n "$module_dir" ] && [ -f "$module_dir/on_select.sh" ]; then
+            hall_log_info "Routing to $module/on_select.sh"
+            bash "$module_dir/on_select.sh" "$cmd" "$FILE"
+            exit_code=$?
+            case $exit_code in
+                $HALL_RC_CLOSE)  return $HALL_RC_CLOSE ;;
+                $HALL_RC_RELOAD) return $HALL_RC_RELOAD ;;
+                *) ;;            # fall through
+            esac
+        fi
+    fi
+
+    # Built-in: editor commands
+    case "$cmd" in
+        vi\ *|nvim\ *|code\ -w\ *|cursor\ -w\ *|windsurf\ -w\ *|zed\ --wait\ *|subl\ -w\ *|agy\ -w\ *)
+            hall_log_info "Launching editor: $cmd"
+            exec bash -c "$cmd"
+            ;;
+    esac
+
+    return $HALL_RC_NOT_HANDLED
+}
+
+# ═══════════════════════════════════════════════════════════════════
+# Main loop — single fzf with Tab/Shift-Tab module navigation
+# ═══════════════════════════════════════════════════════════════════
+
+while true; do
+    hall_clear_entry_cache
+
+    # Remember current module name before rebuilding
+    _prev_idx=$(<"$HALL_STATE_DIR/current")
+    _prev_name="${HALL_MOD_NAMES[$_prev_idx]:-}"
+
+    # Reload config (picks up enable/disable and theme changes)
+    _prev_theme="${_PA_THEME:-}"
+    _hall_load_config
+
+    # Only re-source theme if it changed (clear guard to force re-source)
+    if [ "${_PA_THEME}" != "${_prev_theme}" ]; then
+        _HALL_THEME_LOADED=""
+        source "$HALL_LIB_DIR/hall-theme.sh"
+        hall_apply_glow_style
+    fi
+    # Only rediscover modules if disabled_modules changed (avoids grep+sort per loop)
+    # First iteration: _prev_disabled is unset (not empty), so always enter
+    if [ "${_PA_DISABLED_MODULES}" != "${_prev_disabled-__unset__}" ]; then
+        hall_load_active_modules
+        MOD_COUNT=${#HALL_MOD_NAMES[@]}
+
+        if [ "$MOD_COUNT" -eq 0 ]; then
+            echo 'No modules loaded.' >&2
+            exit 0
+        fi
+
+        # Update state files for tab navigation
+        for i in "${!HALL_MOD_NAMES[@]}"; do
+            echo "${HALL_MOD_NAMES[$i]}:${HALL_MOD_DIRS[$i]}:${HALL_MOD_ICONS[$i]}:${HALL_MOD_LABELS[$i]}"
+        done > "$HALL_STATE_DIR/modules"
+        for i in "${!HALL_MOD_NAMES[@]}"; do
+            echo "${HALL_MOD_NAMES[$i]}:${HALL_MOD_PREVIEW_RENDERERS[$i]:-auto}"
+        done > "$HALL_STATE_DIR/module-preview-renderers"
+        _prev_disabled="${_PA_DISABLED_MODULES}"
+    fi
+
+    # Restore tab by module name (fall back to 0 if module was removed)
+    _new_idx=0
+    if [ -n "$_prev_name" ]; then
+        for i in "${!HALL_MOD_NAMES[@]}"; do
+            if [ "${HALL_MOD_NAMES[$i]}" = "$_prev_name" ]; then
+                _new_idx=$i
+                break
+            fi
+        done
+    fi
+    echo "$_new_idx" > "$HALL_STATE_DIR/current"
+
+    hall_log_info "Loaded $MOD_COUNT modules: ${HALL_MOD_NAMES[*]}"
+
+    # Determine current module name early (needed by unbind logic below)
+    current_idx=$(<"$HALL_STATE_DIR/current")
+    _cur_mod="${HALL_MOD_NAMES[$current_idx]}"
+
+    # Collect module keybindings + write per-module key files
+    ALL_BIND_ARGS=()
+    mkdir -p "$HALL_STATE_DIR/mod-keys"
+    _seen_keys=""
+    for mod_name in "${HALL_MOD_NAMES[@]}"; do
+        bindings=$(hall_collect_module_bindings "$mod_name")
+        # Strip ctrl-f bindings from modules (search is disabled)
+        bindings=$(echo "$bindings" | grep -v '^ctrl-f:')
+        # Derive keys inline (avoid re-sourcing the module)
+        keys=""
+        while IFS= read -r b; do
+            [ -z "$b" ] && continue
+            local_key="${b%%:*}"
+            keys="${keys:+${keys}
+}${local_key}"
+            # Warn on duplicate keys across modules (pure bash, no grep/cut)
+            case "$_seen_keys" in
+                *"|${local_key}="*)
+                    _match="${_seen_keys#*"|${local_key}="}"
+                    _prev_owner="${_match%%"|"*}"
+                    if [ "$_prev_owner" != "$mod_name" ]; then
+                        hall_log_warn "Duplicate binding key '$local_key' in modules '$_prev_owner' and '$mod_name'"
+                    fi
+                    ;;
+            esac
+            _seen_keys="${_seen_keys}|${local_key}=${mod_name}"
+            ALL_BIND_ARGS+=(--bind "$b")
+        done <<< "$bindings"
+        # Write keys file (empty file when no keys)
+        if [ -n "$keys" ]; then
+            printf '%s\n' "$keys" > "$HALL_STATE_DIR/mod-keys/$mod_name"
+        else
+            : > "$HALL_STATE_DIR/mod-keys/$mod_name"
+        fi
+    done
+
+    # Framework keys that must never be unbound by module scoping
+    _framework_keys=""
+
+    # Compute initial unbind set (all non-current module keys, excluding framework keys)
+    _unbind_keys=""
+    for mod_name in "${HALL_MOD_NAMES[@]}"; do
+        [ "$mod_name" = "$_cur_mod" ] && continue
+        while IFS= read -r k; do
+            [ -z "$k" ] && continue
+            # Skip framework-reserved keys
+            case ",$_framework_keys," in *",$k,"*) continue ;; esac
+            _unbind_keys="${_unbind_keys:+$_unbind_keys,}$k"
+        done < "$HALL_STATE_DIR/mod-keys/$mod_name"
+    done
+    # Compute current module's rebind set (restores keys after unbind clobbers them)
+    _rebind_keys=""
+    if [ -f "$HALL_STATE_DIR/mod-keys/$_cur_mod" ]; then
+        while IFS= read -r k; do
+            [ -z "$k" ] && continue
+            _rebind_keys="${_rebind_keys:+$_rebind_keys,}$k"
+        done < "$HALL_STATE_DIR/mod-keys/$_cur_mod"
+    fi
+
+    _start_unbind_args=()
+    if [ -n "$_unbind_keys" ]; then
+        _start_action="unbind($_unbind_keys)"
+        [ -n "$_rebind_keys" ] && _start_action="$_start_action+rebind($_rebind_keys)"
+        _start_unbind_args=(--bind "start:$_start_action")
+    fi
+
+    # Collect fzf opts for CURRENT module only
+    ALL_FZF_OPTS=()
+    fzf_opts=$(hall_collect_module_fzf_opts "$_cur_mod")
+    while IFS= read -r opt; do
+        [ -z "$opt" ] && continue
+        ALL_FZF_OPTS+=("$opt")
+    done <<< "$fzf_opts"
+
+    # Clear module-specific sub-header before building entries
+    rm -f "$HALL_STATE_DIR/module-header"
+
+    # Render initial sub-tab header for current module (if it has subtabs)
+    current_idx=$(<"$HALL_STATE_DIR/current")
+    _cur_mod="${HALL_MOD_NAMES[$current_idx]}"
+    _subtab_labels=()
+    while IFS= read -r _sl; do
+        [ -z "$_sl" ] && continue
+        _subtab_labels+=("$_sl")
+    done <<< "$(hall_collect_module_subtabs "$_cur_mod")"
+    if [ ${#_subtab_labels[@]} -gt 0 ]; then
+        _st_idx=0
+        [ -f "$HALL_STATE_DIR/module-subtab" ] && _st_idx=$(<"$HALL_STATE_DIR/module-subtab")
+        hall_render_subtab_header "$_st_idx" "${_subtab_labels[@]}" > "$HALL_STATE_DIR/module-header"
+    fi
+
+    hall_build_current_entries > "$HALL_STATE_DIR/entries"
+
+    if [ ! -s "$HALL_STATE_DIR/entries" ]; then
+        hall_log_warn "No entries for current module"
+        hall_write_empty_state "$HALL_STATE_DIR/entries"
+    fi
+
+    current_idx=$(<"$HALL_STATE_DIR/current")
+    current_label="${HALL_MOD_LABELS[$current_idx]}"
+
+    # Pre-write state files (switch-module.sh updates these on tab)
+    printf ' %s ' "$current_label" > "$HALL_STATE_DIR/label"
+
+    # Build carousel tab header: ‹ prev   ▸ Active   next ›   ○○●○○
+    tab_header=$(hall_build_tab_header "$current_idx" "${COLUMNS:-80}" "${HALL_MOD_LABELS[@]}")
+
+    # Append module-specific sub-header if written during entry generation
+    if [ -f "$HALL_STATE_DIR/module-header" ]; then
+        _sub_header=$(<"$HALL_STATE_DIR/module-header")
+        tab_header=$(printf '%s\n%s' "$tab_header" "$_sub_header")
+    fi
+
+    printf '%s' "$tab_header" > "$HALL_STATE_DIR/header"
+
+    # Build tab navigation bindings (only if >1 module)
+    # Uses transform() for synchronous execution — avoids race condition
+    # where reload() is async and header file gets read before it's written.
+    TAB_BIND_ARGS=()
+    if [ "$MOD_COUNT" -gt 1 ]; then
+        TAB_BIND_ARGS=(
+            --bind "tab:transform($HALL_DIR/lib/hall-tab-action.sh next)"
+            --bind "shift-tab:transform($HALL_DIR/lib/hall-tab-action.sh prev)"
+        )
+    fi
+
+    # Framework sub-tab bindings (left/right) — no-op if module has no subtabs
+    SUBTAB_BIND_ARGS=(
+        --bind "left:transform($HALL_DIR/lib/hall-subtab-action.sh prev)"
+        --bind "right:transform($HALL_DIR/lib/hall-subtab-action.sh next)"
+    )
+
+    # Build help file for current module
+    hall_build_help_file "$HALL_STATE_DIR/help" "$MOD_COUNT" "$_cur_mod"
+
+    # Build footer (compact — full keybindings available via ? help)
+    footer=$(hall_consume_footer_message)
+    [ -n "$footer" ] || footer=" ? help "
+
+    hall_log_debug "Launching fzf: module=$current_label idx=$current_idx"
+
+    choice=$(fzf < "$HALL_STATE_DIR/entries" \
+        "${FZF_TMUX_FLAG[@]}" \
+        --layout=reverse \
+        --style full:rounded \
+        --border-label " $current_label · ${FILE##*/} " \
+        --border-label-pos 3 \
+        --input-label '' \
+        --header "$tab_header" \
+        --header-border rounded \
+        --padding 0,1 \
+        --highlight-line \
+        --pointer "$HALL_FZF_POINTER" \
+        --marker "$HALL_FZF_MARKER" \
+        --scrollbar "$HALL_FZF_SCROLLBAR" \
+        --separator '' \
+        --prompt "$HALL_FZF_PROMPT" \
+        --ghost "$HALL_FZF_GHOST" \
+        --info inline-right \
+        --color "$HALL_FZF_COLORS" \
+        --ansi \
+        --delimiter=$'\t' \
+        --with-nth=1 \
+        --preview="if [ -f \"$HALL_STATE_DIR/help-active\" ]; then cat \"$HALL_STATE_DIR/help\"; else cc-hall preview {}; fi" \
+        --preview-window 'right:50%:border-left' \
+        --preview-label ' Details ' \
+        --footer "$footer" \
+        --footer-border rounded \
+        --bind 'ctrl-/:change-preview-window(down:40%:border-top|hidden|right:50%:border-left)' \
+        --bind 'shift-up:preview-up,shift-down:preview-down' \
+        --bind 'shift-left:preview-half-page-up,shift-right:preview-half-page-down' \
+        --no-input \
+        --bind 'esc:abort' \
+        --bind "?:transform($HALL_DIR/lib/hall-help-toggle.sh)" \
+        --bind 'enter:transform:[[ ! {} =~ ═══ ]] && echo accept || echo down' \
+        --bind "result:transform-list-label:echo \" \$FZF_MATCH_COUNT items \"" \
+        "${TAB_BIND_ARGS[@]}" \
+        "${SUBTAB_BIND_ARGS[@]}" \
+        "${ALL_BIND_ARGS[@]}" \
+        "${_start_unbind_args[@]}" \
+        "${ALL_FZF_OPTS[@]}")
+
+    if [ -z "$choice" ]; then
+        exit 0
+    fi
+
+    hall_log_debug "Selected: $choice"
+
+    tagged=$(hall_parse_command "$choice")
+    if [ $? -ne 0 ]; then
+        continue
+    fi
+
+    hall_split_route "$tagged"
+    module="$HALL_ROUTE_MODULE"
+    cmd="$HALL_ROUTE_CMD"
+
+    hall_log_info "Route: module=$module cmd=$cmd"
+
+    hall_execute "$module" "$cmd"
+    rc=$?
+    if [ $rc -eq $HALL_RC_CLOSE ]; then
+        exit 0
+    elif [ $rc -eq $HALL_RC_RELOAD ]; then
+        continue  # Reload: rebuild entries and relaunch fzf
+    else
+        hall_log_error "Unhandled command: $cmd (module: $module)"
+        echo "Error: No handler for command: $cmd" >&2
+        echo 'Press Enter to return...'
+        read
+        continue
+    fi
+done
