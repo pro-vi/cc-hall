@@ -86,16 +86,87 @@ hall_log_info "Terminal validation passed"
 
 source "$HALL_LIB_DIR/hall-config.sh"
 
+_hall_cleanup_usage_prewarm() {
+    local pid="${_HALL_USAGE_PID:-}"
+    [ -n "$pid" ] || return 0
+
+    if jobs -pr | grep -qx "$pid"; then
+        kill "$pid" 2>/dev/null || true
+    fi
+    wait "$pid" 2>/dev/null || true
+
+    unset _HALL_USAGE_PID
+}
+
+_hall_current_module_name() {
+    [ -f "$HALL_STATE_DIR/current" ] || return 1
+    [ -f "$HALL_STATE_DIR/modules" ] || return 1
+
+    local idx
+    idx=$(<"$HALL_STATE_DIR/current")
+    sed -n "$((idx + 1))p" "$HALL_STATE_DIR/modules" | cut -d: -f1
+}
+
+_hall_post_fzf_action() {
+    local action="$1"
+    local socket_path="${HALL_STATE_DIR:-}/fzf.sock"
+
+    [ -S "$socket_path" ] || return 1
+    command -v curl >/dev/null 2>&1 || return 1
+
+    curl --silent --show-error \
+        --unix-socket "$socket_path" \
+        -X POST \
+        -H 'Content-Type: text/plain' \
+        --data "$action" \
+        http://localhost/ >/dev/null 2>&1
+}
+
+_hall_usage_maybe_refresh_current_view() {
+    local current_mod
+    current_mod=$(_hall_current_module_name 2>/dev/null) || return 0
+    [ "$current_mod" = "usage" ] || return 0
+
+    # Best effort: fzf may have already exited or restarted on a different socket.
+    # In that case the next loop/session will pick up the finished snapshot anyway.
+    _hall_post_fzf_action "reload(cc-hall reload)+refresh-preview" || true
+}
+
+_hall_start_usage_prewarm() {
+    hall_has_bun || return 0
+
+    local uv_dir="$HALL_STATE_DIR/usage"
+    mkdir -p "$uv_dir" 2>/dev/null || return 0
+
+    [ -f "$uv_dir/manifest.json" ] && return 0
+    [ -f "$uv_dir/.building" ] && return 0
+
+    # A refresh may have removed the cache directory while an older build
+    # was still running. Stop that stale job before launching the replacement.
+    _hall_cleanup_usage_prewarm
+
+    : > "$uv_dir/.building" || return 0
+    (
+        bun "$HALL_LIB_DIR/hall-usage.js" build >/dev/null 2>&1
+        rm -f "$uv_dir/.building"
+        rm -f "$HALL_STATE_DIR"/entries-cache/usage--subtab-*.entries 2>/dev/null
+        _hall_usage_maybe_refresh_current_view
+    ) &
+    _HALL_USAGE_PID=$!
+}
+
 # State directory for tab navigation (shared with helper scripts via env)
 HALL_STATE_DIR=$(mktemp -d /tmp/hall-state.XXXXXX)
 export HALL_STATE_DIR
-trap "rm -rf '$HALL_STATE_DIR'" EXIT INT TERM
+trap "_hall_cleanup_usage_prewarm; rm -rf '$HALL_STATE_DIR'" EXIT INT TERM
 echo 0 > "$HALL_STATE_DIR/current"
 echo 0 > "$HALL_STATE_DIR/module-subtab"
 
 # Generate themed glow style now that HALL_STATE_DIR exists
 hall_apply_glow_style
 hall_clear_entry_cache
+
+_hall_start_usage_prewarm
 
 # ═══════════════════════════════════════════════════════════════════
 # Build entries for current module (tagged with module name)
@@ -162,6 +233,7 @@ hall_execute() {
 
 while true; do
     hall_clear_entry_cache
+    _hall_start_usage_prewarm
 
     # Remember current module name before rebuilding
     _prev_idx=$(<"$HALL_STATE_DIR/current")
@@ -359,6 +431,7 @@ while true; do
 
     choice=$(fzf < "$HALL_STATE_DIR/entries" \
         "${FZF_TMUX_FLAG[@]}" \
+        --listen="$HALL_STATE_DIR/fzf.sock" \
         --layout=reverse \
         --style full:rounded \
         --border-label " $current_label · ${FILE##*/} " \

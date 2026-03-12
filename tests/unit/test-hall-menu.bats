@@ -280,6 +280,7 @@ teardown() {
     assert_success
     assert_output --partial ':editor:'
     assert_output --partial ':cc-hall:'
+    assert_output --partial ':usage:'
 }
 
 @test "hall_build_module_entries: caches entries per module and subtab" {

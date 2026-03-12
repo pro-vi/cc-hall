@@ -4,17 +4,11 @@ Extensible power menu for Claude Code
 
 ![cc-hall](cc-hall.png)
 
-cc-hall is a control panel that can host mods directly in your Claude Code. It ships with modules for editing prompts, toggling hidden settings, browsing skills, and managing memory files.
+cc-hall is a control panel that can host mods directly in your Claude Code. It ships with modules for editing prompts, toggling hidden settings, browsing skills, managing memory files, and inspecting local usage history.
 
 Ctrl-G fires the EDITOR hook which used to open your prompt in an editor. cc-hall hijacks it to render a fzf menu.
 
 ## Install
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/pro-vi/cc-hall/master/install.sh | bash
-```
-
-Or clone locally:
 
 ```bash
 git clone https://github.com/pro-vi/cc-hall.git
@@ -49,9 +43,12 @@ Navigate tabs with **Tab** / **Shift-Tab**. Each tab is a module.
 |--------|-------------|
 | **Editor** | Open your prompt in vim, VS Code, Cursor, etc. or send it to the Prompt Agent for enhancement |
 | **Hall** | Theme switching (Mirrors, Clawd, Zinc) and module management |
+| **Usage** | Read-only analytics: exact local transcript token history, estimated cost, daily/project/model rollups, and live 5h / 7d rate-limit utilization when Claude OAuth is available |
 | **Config** | Claude Code settings across 3 layers (Global, Shared, Local): hidden env vars, experimental flags, project overrides |
 | **Skills** | Browse and invoke project/global skills |
 | **Memory** | View all memory files Claude loads - CLAUDE.md, CLAUDE.local.md, auto-memory |
+
+The Usage module builds its snapshot in the background. On large transcript histories, the first open may briefly show `Usage snapshot building…`, then swap to the finished rows automatically.
 
 ## How to use
 
@@ -73,7 +70,7 @@ Modules can register their own keybindings.
 
 ## Build your own module
 
-Five modules ship built-in.
+Six modules ship built-in.
 
 A module is a directory:
 

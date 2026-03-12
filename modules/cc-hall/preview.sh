@@ -113,6 +113,16 @@ Browse and invoke Claude Code skills.
 Selecting a skill appends \`/skill-name\` to your prompt, triggering it when Claude processes the message.
 EOF
                 ;;
+            usage)
+                cat <<EOF | hall_render_markdown
+**${mod_label:-$mod_name}**
+
+Read-only analytics from local Claude Code transcripts.
+Shows exact token history, estimated API cost, project/model rollups, and recent session activity.
+
+> Core module — cannot be disabled.
+EOF
+                ;;
             *)
                 # Generic fallback for unknown/user modules
                 desc=""
@@ -157,7 +167,7 @@ EOF
 
         # ── Status ──────────────────────────────────────
         printf '\n'
-        if [ "$mod_name" = "cc-hall" ] || [ "$mod_name" = "editor" ]; then
+        if [ -n "$mod_dir" ] && grep -q '^HALL_MODULE_LOCKED=1' "$mod_dir/module.sh" 2>/dev/null; then
             printf '  Status:   ✓ core\n'
         elif hall_is_module_disabled "$mod_name"; then
             printf '  Status:   ✗ disabled\n'

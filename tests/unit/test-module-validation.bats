@@ -163,6 +163,31 @@ teardown() {
     assert_success
 }
 
+@test "validate: usage entries are well-formed (label<TAB>command)" {
+    run bash -c "
+        export HALL_STATE_DIR='$HALL_STATE_DIR'
+        export HALL_DIR='$HALL_DIR'
+        export HALL_LIB_DIR='$HALL_LIB_DIR'
+        echo '0' > '$HALL_STATE_DIR/module-subtab'
+        source '$HALL_LIB_DIR/hall-common.sh'
+        source '$HALL_LIB_DIR/hall-menu.sh'
+        source '$HALL_DIR/modules/usage/module.sh'
+        entries=\$(hall_usage_entries)
+        fail=0
+        while IFS= read -r line; do
+            [ -z \"\$line\" ] && continue
+            case \"\$line\" in
+                *\$'\\t'*) ;;
+                *) echo \"FAIL: line without tab: \$line\"; fail=1 ;;
+            esac
+            cmd=\"\${line#*\$'\\t'}\"
+            [ -z \"\$cmd\" ] && { echo \"FAIL: empty command\"; fail=1; }
+        done <<< \"\$entries\"
+        exit \$fail
+    "
+    assert_success
+}
+
 @test "validate: cc-config subtab 1 (Shared) entries well-formed" {
     run bash -c "
         export HALL_STATE_DIR='$HALL_STATE_DIR'
@@ -376,6 +401,35 @@ teardown() {
     assert_success
 }
 
+@test "validate: usage on_select handles all entry commands" {
+    run bash -c "
+        export HALL_STATE_DIR='$HALL_STATE_DIR'
+        export HALL_DIR='$HALL_DIR'
+        export HALL_LIB_DIR='$HALL_LIB_DIR'
+        echo '0' > '$HALL_STATE_DIR/module-subtab'
+        source '$HALL_LIB_DIR/hall-common.sh'
+        source '$HALL_LIB_DIR/hall-menu.sh'
+        source '$HALL_DIR/modules/usage/module.sh'
+        entries=\$(hall_usage_entries)
+        fail=0
+        while IFS= read -r line; do
+            [ -z \"\$line\" ] && continue
+            cmd=\"\${line#*\$'\\t'}\"
+            [ \"\$cmd\" = 'echo' ] && continue
+            set +e
+            bash '$HALL_DIR/modules/usage/on_select.sh' \"\$cmd\" '/dev/null' 2>/dev/null
+            rc=\$?
+            set -e
+            if [ \"\$rc\" -eq 1 ]; then
+                echo \"NOT_HANDLED: \$cmd\"
+                fail=1
+            fi
+        done <<< \"\$entries\"
+        exit \$fail
+    "
+    assert_success
+}
+
 # ============================================================================
 # TEST 3: Toggle label consistency
 # Toggle entries should show current state and next state with → indicator.
@@ -528,7 +582,7 @@ teardown() {
 }
 
 @test "validate: cc-hall emits at least 4 entries" {
-    # Guide + theme toggle + noop dividers + module list (5 built-ins)
+    # Guide + theme toggle + noop dividers + module list (6 built-ins)
     run bash -c "
         export HALL_STATE_DIR='$HALL_STATE_DIR'
         export HALL_DIR='$HALL_DIR'
@@ -596,4 +650,22 @@ teardown() {
     "
     assert_success
     [ "$output" -ge 1 ]
+}
+
+@test "validate: usage emits at least 4 entries" {
+    run bash -c "
+        export HALL_STATE_DIR='$HALL_STATE_DIR'
+        export HALL_DIR='$HALL_DIR'
+        export HALL_LIB_DIR='$HALL_LIB_DIR'
+        bun '$HALL_LIB_DIR/hall-usage.js' build
+        echo '0' > '$HALL_STATE_DIR/module-subtab'
+        source '$HALL_LIB_DIR/hall-common.sh'
+        source '$HALL_LIB_DIR/hall-menu.sh'
+        source '$HALL_DIR/modules/usage/module.sh'
+        entries=\$(hall_usage_entries)
+        count=\$(printf '%s\n' \"\$entries\" | wc -l | tr -d ' ')
+        echo \"\$count\"
+    "
+    assert_success
+    [ "$output" -ge 4 ]
 }

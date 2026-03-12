@@ -4,21 +4,20 @@ set -e
 # cc-hall installer
 # Installs the menu host and registers as Claude Code's EDITOR
 
-REPO_URL="https://github.com/pro-vi/cc-hall.git"
-CLONE_DIR="${HOME}/.local/share/cc-hall"
-
-# Detect local vs piped execution
-if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/bin/cc-hall" 2>/dev/null ]; then
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-else
-    # Running via curl | bash — clone repo then re-exec from clone
-    if [ -d "$CLONE_DIR/.git" ]; then
-        git -C "$CLONE_DIR" pull --quiet 2>/dev/null || true
-    else
-        git clone --quiet --depth 1 "$REPO_URL" "$CLONE_DIR"
-    fi
-    exec "$CLONE_DIR/install.sh"
+# Detect piped execution (curl | bash) — BASH_SOURCE is empty or not a real file
+if [ -z "${BASH_SOURCE[0]:-}" ] || [ ! -f "${BASH_SOURCE[0]}" ]; then
+    echo ""
+    echo "  Streamed install is not supported."
+    echo ""
+    echo "  cc-hall must be cloned locally so the symlink has a real target:"
+    echo ""
+    echo "    git clone https://github.com/pro-vi/cc-hall.git"
+    echo "    cd cc-hall && ./install.sh"
+    echo ""
+    exit 1
 fi
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="${HOME}/.local/bin"
 HALL_MODULES_DIR="${HOME}/.claude/hall/modules"
 HALL_LOG_DIR="${HOME}/.claude/hall/logs"
@@ -86,7 +85,7 @@ info "Symlinked cc-hall → $INSTALL_DIR/cc-hall"
 # ============================================================================
 
 # Built-in modules are auto-discovered from the repo's modules/ dir
-info "Built-in modules: editor, hall, config, skills, memory (auto-discovered from $SCRIPT_DIR/modules/)"
+info "Built-in modules: editor, hall, usage, config, skills, memory (auto-discovered from $SCRIPT_DIR/modules/)"
 
 # ============================================================================
 # REGISTER AS EDITOR IN CLAUDE CODE

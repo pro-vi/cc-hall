@@ -627,6 +627,30 @@ SCRIPT
     refute_output --partial 'hall-preview.sh'
 }
 
+@test "main loop: usage prewarm cleanup only targets active background jobs" {
+    run bash -c "
+        grep -q '_hall_cleanup_usage_prewarm' '$HALL_DIR/bin/cc-hall' &&
+        grep -q 'jobs -pr' '$HALL_DIR/bin/cc-hall'
+    "
+    assert_success
+}
+
+@test "main loop: fzf listen socket is enabled for async usage refresh" {
+    run bash -c "
+        grep -q 'fzf.sock' '$HALL_DIR/bin/cc-hall' &&
+        grep -q -- '--listen=' '$HALL_DIR/bin/cc-hall'
+    "
+    assert_success
+}
+
+@test "main loop: usage prewarm posts reload when usage tab is current" {
+    run bash -c "
+        grep -q '_hall_usage_maybe_refresh_current_view' '$HALL_DIR/bin/cc-hall' &&
+        grep -q 'reload(cc-hall reload)+refresh-preview' '$HALL_DIR/bin/cc-hall'
+    "
+    assert_success
+}
+
 # ============================================================================
 # MODULE_API.md documents new convention
 # ============================================================================
