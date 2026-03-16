@@ -129,16 +129,6 @@ hall_cc_config_entries() {
         echo "$default"
     }
 
-    _cv_env_first() {
-        local data="$1" default="$2"
-        shift 2
-        local key value sentinel="__hall_unset__"
-        for key in "$@"; do
-            value=$(_cv_env "$data" "$key" "$sentinel")
-            [ "$value" != "$sentinel" ] && { echo "$value"; return; }
-        done
-        echo "$default"
-    }
 
     _cv_tool_search_kind() {
         local raw="$1"
@@ -637,22 +627,6 @@ hall_cc_config_entries() {
             "$_cv_cmd_flag DISABLE_COMPACT"
     fi
 
-    # Telemetry
-    if $_cv_is_project; then
-        _cv_v=$(_cv_env_first "$_cv_s" "" "DISABLE_TELEMETRY" "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC")
-        if [ -z "$_cv_v" ]; then _cv_st="not_set"
-        elif [ "$_cv_v" = "1" ]; then _cv_st="off"
-        else _cv_st="on"; fi
-        printf '%s\t%s\n' \
-            "$(hall_ansi_dim "│") $(hall_ansi_bold "Telemetry"): $(_cv_three_state "$_cv_st")" \
-            "$_cv_cmd_flag DISABLE_TELEMETRY"
-    else
-        _cv_v=$(_cv_env_first "$_cv_s" "" "DISABLE_TELEMETRY" "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC")
-        [ "$_cv_v" = "1" ] && _cv_v="off" || _cv_v="on"
-        printf '%s\t%s\n' \
-            "$(hall_ansi_dim "│") $(hall_ansi_bold "Telemetry"): $(_cv_on_off "$_cv_v")" \
-            "$_cv_cmd_flag DISABLE_TELEMETRY"
-    fi
 
     # ── UI ───────────────────────────────────────────────────
 

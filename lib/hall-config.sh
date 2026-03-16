@@ -349,45 +349,6 @@ hall_config_toggle_fast_mode() {
     hall_config_toggle_root_default_on_compat "$1" "fastMode" "CLAUDE_CODE_DISABLE_FAST_MODE" "$2"
 }
 
-# Toggle Telemetry using the canonical disable flag while cleaning
-# the older traffic alias.
-# Args: $1=file, $2=mode (binary|three_state)
-hall_config_toggle_telemetry() {
-    local file="$1" mode="$2"
-    hall_config_prepare_file "$file" || return 1
-    if [ "$mode" = "three_state" ]; then
-        bun -e "
-            const f = Bun.file('$file');
-            let c = {}; try { c = JSON.parse(await f.text()); } catch {}
-            if (!c.env) c.env = {};
-            const cur = c.env.DISABLE_TELEMETRY;
-            const legacy = c.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC;
-            const state = cur != null
-              ? (cur === '1' ? 'off' : 'on')
-              : legacy != null
-                ? (legacy === '1' ? 'off' : 'on')
-                : 'unset';
-            if (state === 'unset') c.env.DISABLE_TELEMETRY = '0';
-            else if (state === 'on') c.env.DISABLE_TELEMETRY = '1';
-            else delete c.env.DISABLE_TELEMETRY;
-            delete c.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC;
-            await Bun.write(f, JSON.stringify(c, null, 2));
-        " 2>/dev/null
-    else
-        bun -e "
-            const f = Bun.file('$file');
-            let c = {}; try { c = JSON.parse(await f.text()); } catch {}
-            if (!c.env) c.env = {};
-            const cur = c.env.DISABLE_TELEMETRY;
-            const legacy = c.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC;
-            const enabled = cur !== '1' && legacy !== '1';
-            if (enabled) c.env.DISABLE_TELEMETRY = '1';
-            else delete c.env.DISABLE_TELEMETRY;
-            delete c.env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC;
-            await Bun.write(f, JSON.stringify(c, null, 2));
-        " 2>/dev/null
-    fi
-}
 
 # Toggle inverted DISABLE env var ("1" = off, absent = on).
 # Args: $1=file, $2=key, $3=mode (binary|three_state)

@@ -69,9 +69,6 @@ DISABLE_AUTO_COMPACT|DISABLE_COMPACT|CLAUDE_CODE_DISABLE_CLAUDE_MDS|\
 CLAUDE_CODE_DISABLE_TERMINAL_TITLE)
             hall_config_toggle_env_disable "$file" "$flag" "$mode" ;;
 
-        # Telemetry: current disable flag with legacy alias cleanup
-        DISABLE_TELEMETRY)
-            hall_config_toggle_telemetry "$file" "$mode" ;;
     esac
 }
 

@@ -157,7 +157,6 @@ teardown() {
     assert_output --partial 'Prompt Caching'
     assert_output --partial 'Auto Compact'
     assert_output --partial 'Compact'
-    assert_output --partial 'Telemetry'
     # UI
     assert_output --partial 'Spinner'
     assert_output --partial 'Duration'
@@ -184,7 +183,6 @@ teardown() {
     assert_output --partial 'cv-flag DISABLE_COMPACT'
     assert_output --partial 'cv-flag autoMemoryEnabled'
     assert_output --partial 'cv-flag DISABLE_PROMPT_CACHING'
-    assert_output --partial 'cv-flag DISABLE_TELEMETRY'
     assert_output --partial 'cv-flag CLAUDE_CODE_DISABLE_CLAUDE_MDS'
     assert_output --partial 'cv-flag CLAUDE_CODE_DISABLE_TERMINAL_TITLE'
     assert_output --partial 'cv-flag showTurnDuration'
@@ -366,7 +364,6 @@ teardown() {
     assert_output --partial 'cv-pflag DISABLE_AUTO_COMPACT'
     assert_output --partial 'cv-pflag DISABLE_COMPACT'
     assert_output --partial 'cv-pflag autoMemoryEnabled'
-    assert_output --partial 'cv-pflag DISABLE_TELEMETRY'
     assert_output --partial 'cv-pflag CLAUDE_CODE_DISABLE_CLAUDE_MDS'
     assert_output --partial 'cv-pflag CLAUDE_CODE_DISABLE_TERMINAL_TITLE'
     assert_output --partial 'cv-pflag showTurnDuration'
@@ -482,16 +479,6 @@ teardown() {
     refute_output --partial 'CLAUDE_CODE_ENABLE_TASKS'
 }
 
-@test "on_select: cv-flag telemetry migrates deprecated traffic alias" {
-    _seed_settings '{"env":{"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC":"1"}}'
-    run env HOME="$FAKE_HOME" HALL_LIB_DIR="$HALL_LIB_DIR" HALL_STATE_DIR="$HALL_STATE_DIR" \
-        bash "$CC_CONFIG_DIR/on_select.sh" "cv-flag DISABLE_TELEMETRY" "/dev/null"
-    [ "$status" -eq 2 ]
-    run cat "$FAKE_HOME/.claude/settings.json"
-    refute_output --partial 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'
-    refute_output --partial 'DISABLE_TELEMETRY'
-}
-
 @test "on_select: cv-flag fastMode cleans legacy disable alias" {
     _seed_settings '{"env":{"CLAUDE_CODE_DISABLE_FAST_MODE":"1"}}'
     run env HOME="$FAKE_HOME" HALL_LIB_DIR="$HALL_LIB_DIR" HALL_STATE_DIR="$HALL_STATE_DIR" \
@@ -534,7 +521,7 @@ teardown() {
                 fastMode CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS \
                 CLAUDE_CODE_DISABLE_BACKGROUND_TASKS DISABLE_AUTO_COMPACT DISABLE_COMPACT \
                 CLAUDE_CODE_DISABLE_CLAUDE_MDS CLAUDE_CODE_DISABLE_TERMINAL_TITLE \
-                DISABLE_TELEMETRY CLAUDE_CODE_ENABLE_TASKS; do
+                CLAUDE_CODE_ENABLE_TASKS; do
         run env HOME="$FAKE_HOME" HALL_LIB_DIR="$HALL_LIB_DIR" HALL_STATE_DIR="$HALL_STATE_DIR" \
             bash "$CC_CONFIG_DIR/on_select.sh" "cv-flag $flag" "/dev/null"
         [ "$status" -eq 2 ]
@@ -736,14 +723,6 @@ teardown() {
     assert_output --partial 'autoMemoryEnabled'
 }
 
-@test "preview: cv-flag telemetry shows description" {
-    run env HALL_LIB_DIR="$HALL_LIB_DIR" \
-        bash "$CC_CONFIG_DIR/preview.sh" "cv-flag DISABLE_TELEMETRY"
-    assert_success
-    assert_output --partial 'Telemetry'
-    assert_output --partial 'DISABLE_TELEMETRY'
-}
-
 @test "preview: cv-flag auto updates shows latest/stable cycle" {
     run env HALL_LIB_DIR="$HALL_LIB_DIR" \
         bash "$CC_CONFIG_DIR/preview.sh" "cv-flag autoUpdatesChannel"
@@ -760,7 +739,7 @@ teardown() {
     for flag in CLAUDE_CODE_DISABLE_THINKING CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING \
                 fastMode CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS DISABLE_AUTO_COMPACT \
                 DISABLE_COMPACT CLAUDE_CODE_DISABLE_CLAUDE_MDS \
-                CLAUDE_CODE_DISABLE_TERMINAL_TITLE DISABLE_TELEMETRY; do
+                CLAUDE_CODE_DISABLE_TERMINAL_TITLE; do
         run env HALL_LIB_DIR="$HALL_LIB_DIR" \
             bash "$CC_CONFIG_DIR/preview.sh" "cv-flag $flag"
         assert_success

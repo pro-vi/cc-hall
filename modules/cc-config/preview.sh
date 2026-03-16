@@ -339,23 +339,6 @@ EOF
             printf '\n  Press Enter to toggle.\n'
             _cv_effect_next_session
             ;;
-        DISABLE_TELEMETRY)
-            cat <<'EOF' | hall_render_markdown
-**Telemetry**
-
-Controls telemetry / analytics traffic from Claude Code.
-
-This is a default-on disable flag:
-- **ON** = key absent (default)
-- **OFF** = `DISABLE_TELEMETRY=1`
-
-Hall also cleans up the deprecated
-`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` alias on write.
-EOF
-            _cv_stored_in "$prefix"
-            printf '\n  Press Enter to toggle.\n'
-            _cv_effect_next_session
-            ;;
         spinnerTipsEnabled)
             cat <<'EOF' | hall_render_markdown
 **Spinner Tips**
