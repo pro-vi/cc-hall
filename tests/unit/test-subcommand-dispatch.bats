@@ -618,12 +618,12 @@ SCRIPT
 }
 
 # ============================================================================
-# fzf --preview binding uses cc-hall preview
+# fzf --preview binding uses the current cc-hall binary
 # ============================================================================
 
-@test "main loop: --preview uses cc-hall preview, not direct path" {
+@test "main loop: --preview uses resolved cc-hall binary, not PATH lookup" {
     run bash -c "grep -- '--preview=' '$HALL_DIR/bin/cc-hall'"
-    assert_output --partial 'cc-hall preview {}'
+    assert_output --partial '$HALL_SAFE_BIN preview {}'
     refute_output --partial 'hall-preview.sh'
 }
 
@@ -643,10 +643,10 @@ SCRIPT
     assert_success
 }
 
-@test "main loop: usage prewarm posts reload when usage tab is current" {
+@test "main loop: usage prewarm posts reload via resolved cc-hall binary" {
     run bash -c "
         grep -q '_hall_usage_maybe_refresh_current_view' '$HALL_DIR/bin/cc-hall' &&
-        grep -q 'reload(cc-hall reload)+refresh-preview' '$HALL_DIR/bin/cc-hall'
+        grep -q 'reload(\$HALL_SAFE_BIN reload)+refresh-preview' '$HALL_DIR/bin/cc-hall'
     "
     assert_success
 }

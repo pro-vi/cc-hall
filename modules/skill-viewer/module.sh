@@ -7,6 +7,14 @@ HALL_MODULE_LABEL="Skills"
 HALL_MODULE_ORDER=30
 HALL_MODULE_ICON="◆"
 
+# Keybindings: y = yank (copy) the skill's SKILL.md to clipboard
+HALL_MODULE_BINDINGS=(
+    "y:transform('$HALL_LIB_DIR/hall-yank.sh' {2} skill-invoke 2 && printf 'change-footer( ✓ yanked  ? help )')"
+)
+
+# Footer hint shown when this module is active
+HALL_MODULE_FOOTER=" y yank  ? help "
+
 _hall_skill_assign_trimmed() {
     local var_name="$1"
     local value="$2"

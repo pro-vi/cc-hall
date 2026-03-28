@@ -13,6 +13,14 @@ HALL_MODULE_LABEL="Memory"
 HALL_MODULE_ORDER=35
 HALL_MODULE_ICON="◎"
 
+# Keybindings: y = yank (copy) memory file content to clipboard
+HALL_MODULE_BINDINGS=(
+    "y:transform('$HALL_LIB_DIR/hall-yank.sh' {2} mv-open 1 && printf 'change-footer( ✓ yanked  ? help )')"
+)
+
+# Footer hint shown when this module is active
+HALL_MODULE_FOOTER=" y yank  ? help "
+
 # Section state helpers
 _mv_sections_file() { echo "$HALL_STATE_DIR/memory-sections"; }
 

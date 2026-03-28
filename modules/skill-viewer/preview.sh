@@ -26,6 +26,8 @@ and are scoped to the current repository.
 **Global** skills live in `~/.claude/skills/`
 and are available across all projects.
 
+Press **y** to yank (copy) a skill's SKILL.md to clipboard.
+
 *Select a skill to invoke it as a slash command.*
 EOF
         exit 0 ;;

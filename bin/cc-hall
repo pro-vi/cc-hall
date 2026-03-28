@@ -11,6 +11,8 @@ if [ -L "$SCRIPT_PATH" ]; then
     fi
 fi
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+export HALL_BIN="$SCRIPT_DIR/$(basename "$SCRIPT_PATH")"
+export HALL_SAFE_BIN=$(printf '%q' "$HALL_BIN")
 
 export HALL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 export HALL_LIB_DIR="$HALL_DIR/lib"
@@ -129,7 +131,7 @@ _hall_usage_maybe_refresh_current_view() {
 
     # Best effort: fzf may have already exited or restarted on a different socket.
     # In that case the next loop/session will pick up the finished snapshot anyway.
-    _hall_post_fzf_action "reload(cc-hall reload)+refresh-preview" || true
+    _hall_post_fzf_action "reload($HALL_SAFE_BIN reload)+refresh-preview" || true
 }
 
 _hall_start_usage_prewarm() {
@@ -425,7 +427,10 @@ while true; do
 
     # Build footer (compact — full keybindings available via ? help)
     footer=$(hall_consume_footer_message)
-    [ -n "$footer" ] || footer=" ? help "
+    if [ -z "$footer" ]; then
+        footer=$(hall_get_module_footer "$_cur_mod")
+        [ -n "$footer" ] || footer=" ? help "
+    fi
 
     hall_log_debug "Launching fzf: module=$current_label idx=$current_idx"
 
@@ -452,7 +457,7 @@ while true; do
         --ansi \
         --delimiter=$'\t' \
         --with-nth=1 \
-        --preview="if [ -f \"$HALL_STATE_DIR/help-active\" ]; then cat \"$HALL_STATE_DIR/help\"; else cc-hall preview {}; fi" \
+        --preview="if [ -f \"$HALL_STATE_DIR/help-active\" ]; then cat \"$HALL_STATE_DIR/help\"; else $HALL_SAFE_BIN preview {}; fi" \
         --preview-window 'right:50%:border-left' \
         --preview-label ' Details ' \
         --footer "$footer" \

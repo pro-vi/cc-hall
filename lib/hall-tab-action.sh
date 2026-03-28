@@ -48,6 +48,7 @@ rm -f "$HALL_STATE_DIR/help-active"
 # HALL_MODULE_SUBTABS survive (hall_build_module_entries runs in $() subshell)
 HALL_MODULE_FZF_OPTS=()
 HALL_MODULE_SUBTABS=()
+HALL_MODULE_FOOTER=""
 _search_action=""
 
 _mod_file=$(hall_find_module_file "$mod_name")
@@ -112,7 +113,10 @@ fi
 # Rebuild help file for new module
 hall_build_help_file "$HALL_STATE_DIR/help" "$MOD_COUNT" "$mod_name"
 
+# Module-specific footer (fall back to default)
+_footer="${HALL_MODULE_FOOTER:- ? help }"
+
 # Output fzf action string — all values are pre-computed, no file reads needed
 # for label/header. Entries are in the file (written above, before this output).
-printf 'reload(cat %s)+change-border-label( %s )+change-header(%s)%s%s' \
-    "$HALL_STATE_DIR/entries" "$mod_label" "$header" "$_search_action" "$_bind_actions"
+printf 'reload(cat %s)+change-border-label( %s )+change-header(%s)+change-footer(%s)%s%s' \
+    "$HALL_STATE_DIR/entries" "$mod_label" "$header" "$_footer" "$_search_action" "$_bind_actions"

@@ -582,6 +582,17 @@ hall_build_tab_header() {
 # SUB-TAB HELPERS
 # ============================================================================
 
+# Get a module's custom footer (empty string if not set)
+hall_get_module_footer() {
+    local mod_file
+    mod_file=$(hall_find_module_file "$1")
+    [ -z "$mod_file" ] && return
+    HALL_MODULE_FOOTER=""
+    source "$HALL_LIB_DIR/hall-common.sh" 2>/dev/null
+    source "$mod_file" 2>/dev/null
+    printf '%s' "$HALL_MODULE_FOOTER"
+}
+
 # Source a module and echo its HALL_MODULE_SUBTABS labels (one per line)
 hall_collect_module_subtabs() {
     local mod_name="$1"
