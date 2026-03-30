@@ -593,6 +593,17 @@ hall_get_module_footer() {
     printf '%s' "$HALL_MODULE_FOOTER"
 }
 
+# Get a module's preview window setting (empty string if not set)
+hall_get_module_preview_window() {
+    local mod_file
+    mod_file=$(hall_find_module_file "$1")
+    [ -z "$mod_file" ] && return
+    HALL_MODULE_PREVIEW_WINDOW=""
+    source "$HALL_LIB_DIR/hall-common.sh" 2>/dev/null
+    source "$mod_file" 2>/dev/null
+    printf '%s' "$HALL_MODULE_PREVIEW_WINDOW"
+}
+
 # Source a module and echo its HALL_MODULE_SUBTABS labels (one per line)
 hall_collect_module_subtabs() {
     local mod_name="$1"

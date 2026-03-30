@@ -305,3 +305,11 @@ hall_ansi_color() {
   local code="$1"; shift
   printf '\033[%sm%s\033[0m' "$code" "$*"
 }
+
+# hall_ansi_hex HEX TEXT
+#   HEX is #RRGGBB (e.g., "#7ee787"). Emits truecolor foreground.
+hall_ansi_hex() {
+  local h="${1#\#}"; shift
+  printf '\033[38;2;%d;%d;%dm%s\033[0m' \
+    "$((16#${h:0:2}))" "$((16#${h:2:2}))" "$((16#${h:4:2}))" "$*"
+}

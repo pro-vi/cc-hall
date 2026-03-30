@@ -49,6 +49,7 @@ rm -f "$HALL_STATE_DIR/help-active"
 HALL_MODULE_FZF_OPTS=()
 HALL_MODULE_SUBTABS=()
 HALL_MODULE_FOOTER=""
+HALL_MODULE_PREVIEW_WINDOW=""
 _search_action=""
 
 _mod_file=$(hall_find_module_file "$mod_name")
@@ -116,7 +117,11 @@ hall_build_help_file "$HALL_STATE_DIR/help" "$MOD_COUNT" "$mod_name"
 # Module-specific footer (fall back to default)
 _footer="${HALL_MODULE_FOOTER:- ? help }"
 
+# Preview window: module can request hidden (default: restore standard layout)
+_preview_action="+change-preview-window(right:50%:border-left)"
+[ "$HALL_MODULE_PREVIEW_WINDOW" = "hidden" ] && _preview_action="+change-preview-window(hidden)"
+
 # Output fzf action string — all values are pre-computed, no file reads needed
 # for label/header. Entries are in the file (written above, before this output).
-printf 'reload(cat %s)+change-border-label( %s )+change-header(%s)+change-footer(%s)%s%s' \
-    "$HALL_STATE_DIR/entries" "$mod_label" "$header" "$_footer" "$_search_action" "$_bind_actions"
+printf 'reload(cat %s)+change-border-label( %s )+change-header(%s)+change-footer(%s)%s%s%s' \
+    "$HALL_STATE_DIR/entries" "$mod_label" "$header" "$_footer" "$_preview_action" "$_search_action" "$_bind_actions"

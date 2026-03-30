@@ -269,6 +269,11 @@ while true; do
         for i in "${!HALL_MOD_NAMES[@]}"; do
             echo "${HALL_MOD_NAMES[$i]}:${HALL_MOD_PREVIEW_RENDERERS[$i]:-auto}"
         done > "$HALL_STATE_DIR/module-preview-renderers"
+        # Write per-module preview window settings (for help-toggle restore)
+        for i in "${!HALL_MOD_NAMES[@]}"; do
+            _mpw=$(hall_get_module_preview_window "${HALL_MOD_NAMES[$i]}")
+            [ -n "$_mpw" ] && echo "${HALL_MOD_NAMES[$i]}:$_mpw"
+        done > "$HALL_STATE_DIR/module-preview-window"
         _prev_disabled="${_PA_DISABLED_MODULES}"
     fi
 
@@ -364,6 +369,10 @@ while true; do
         ALL_FZF_OPTS+=("$opt")
     done <<< "$fzf_opts"
 
+    # Module-specific preview window (e.g. "hidden" for git module)
+    _pw=$(hall_get_module_preview_window "$_cur_mod")
+    [ -n "$_pw" ] && ALL_FZF_OPTS+=(--preview-window "$_pw")
+
     # Clear module-specific sub-header before building entries
     rm -f "$HALL_STATE_DIR/module-header"
 
@@ -412,7 +421,9 @@ while true; do
     if [ "$MOD_COUNT" -gt 1 ]; then
         TAB_BIND_ARGS=(
             --bind "tab:transform($HALL_DIR/lib/hall-tab-action.sh next)"
+            # Backtab arrives as shift-tab in some terminals and btab in others.
             --bind "shift-tab:transform($HALL_DIR/lib/hall-tab-action.sh prev)"
+            --bind "btab:transform($HALL_DIR/lib/hall-tab-action.sh prev)"
         )
     fi
 
