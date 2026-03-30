@@ -643,6 +643,14 @@ SCRIPT
     assert_success
 }
 
+@test "main loop: binds both shift-tab and btab to previous-module transform" {
+    run bash -c "
+        grep -q 'shift-tab:transform(.*hall-tab-action.sh prev)' '$HALL_DIR/bin/cc-hall' &&
+        grep -q 'btab:transform(.*hall-tab-action.sh prev)' '$HALL_DIR/bin/cc-hall'
+    "
+    assert_success
+}
+
 @test "main loop: usage prewarm posts reload via resolved cc-hall binary" {
     run bash -c "
         grep -q '_hall_usage_maybe_refresh_current_view' '$HALL_DIR/bin/cc-hall' &&
